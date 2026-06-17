@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rede Comercial AutoZap</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Oswald:wght@700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <main class="app">
+
+    <!-- ══ TELA 1: BOAS-VINDAS ══════════════════════════════════════════ -->
+    <section id="welcomeScreen" class="screen">
+      <div class="hero">
+
+        <div class="logo-hero-wrap">
+          <img src="autozap-logo.png" alt="AutoZap" class="logo-icon-img" />
+          <span class="logo-hero-text">Auto<strong>Zap</strong></span>
+        </div>
+
+        <div class="hero-badge">✦ Programa de Representantes</div>
+
+        <h1>Ganhe dinheiro<br>indicando o <em>AutoZap</em></h1>
+        <p class="hero-desc">Você indica uma loja de celular. Se ela contratar usando seu código, você recebe <strong>25% da primeira venda</strong> — direto no seu PIX.</p>
+
+        <div class="plans-table">
+          <div class="plans-header">
+            <span>Plano</span>
+            <span>Valor</span>
+            <span>Sua comissão</span>
+          </div>
+          <div class="plan-row">
+            <span class="plan-name">Básico</span>
+            <span class="plan-price">R$60<small>/mês</small></span>
+            <span class="plan-comm">R$15</span>
+          </div>
+          <div class="plan-row">
+            <span class="plan-name">Profissional</span>
+            <span class="plan-price">R$120<small>/mês</small></span>
+            <span class="plan-comm">R$30</span>
+          </div>
+          <div class="plan-row featured">
+            <span class="plan-name">Premium <span class="tag">+ popular</span></span>
+            <span class="plan-price">R$220<small>/mês</small></span>
+            <span class="plan-comm gold">R$55</span>
+          </div>
+        </div>
+
+        <button class="btn-primary" onclick="goTo('registerScreen')">
+          Quero ser representante
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+
+        <button class="btn-secondary" onclick="goTo('loginScreen')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+          Já sou representante — Entrar
+        </button>
+
+        <p class="hero-note">Gratuito · Sem mensalidade · Sem taxa de adesão</p>
+      </div>
+    </section>
+
+    <!-- ══ TELA 2: CADASTRO + CONTRATO ══════════════════════════════════ -->
+    <section id="registerScreen" class="screen hidden">
+      <div class="card">
+
+        <div class="card-header">
+          <div class="logo-inline">
+            <img src="autozap-logo.png" alt="" class="logo-icon-sm" />
+            <span class="logo-text">Auto<strong>Zap</strong></span>
+          </div>
+          <span class="step-chip">Passo 1 / 2</span>
+        </div>
+
+        <!-- ── Seção: dados pessoais ── -->
+        <div class="form-section-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          Dados pessoais
+        </div>
+
+        <label for="name">Nome completo</label>
+        <input id="name" type="text" placeholder="Como você se chama?" autocomplete="name" />
+
+        <div class="field-row">
+          <div>
+            <label for="age">Idade</label>
+            <input id="age" type="number" placeholder="18+" min="1" max="120" />
+          </div>
+          <div>
+            <label for="city">Cidade</label>
+            <input id="city" type="text" placeholder="Sua cidade" autocomplete="address-level2" />
+          </div>
+        </div>
+
+        <label for="whatsapp">WhatsApp</label>
+        <input id="whatsapp" type="tel" placeholder="(00) 00000-0000" autocomplete="tel" />
+
+        <label for="email">E-mail</label>
+        <input id="email" type="email" placeholder="seuemail@email.com" autocomplete="email" />
+
+        <label for="password">Senha</label>
+        <input id="password" type="password" placeholder="Crie uma senha" autocomplete="new-password" />
+
+        <label for="passwordConfirm">Confirmar senha</label>
+        <input id="passwordConfirm" type="password" placeholder="Repita a senha" autocomplete="new-password" />
+
+        <label>Foto do rosto</label>
+        <div class="photo-upload" onclick="document.getElementById('photo').click()">
+          <div id="photoPreviewUpload" class="avatar-upload">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4a5580" stroke-width="1.5">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+          </div>
+          <div class="photo-text">
+            <p class="photo-title">Clique para enviar</p>
+            <p class="photo-sub">JPG ou PNG</p>
+          </div>
+          <input id="photo" type="file" accept="image/*" onchange="previewPhoto(this)" style="display:none" />
+        </div>
+
+        <!-- ── Seção: contrato ── -->
+        <div class="form-section-divider"></div>
+
+        <div class="form-section-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Contrato de representante
+        </div>
+        <p class="form-section-sub">Leia com atenção. A assinatura é obrigatória para prosseguir.</p>
+
+        <div id="contractText" class="contract-box">
+          <div class="contract-loading">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            Carregando contrato…
+          </div>
+        </div>
+
+        <div id="signArea" class="sign-input-area">
+          <p class="sign-input-label">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            Assinar contrato
+          </p>
+          <input
+            id="signatureInput"
+            type="text"
+            class="sign-input"
+            placeholder="Digite seu nome completo…"
+            autocomplete="off"
+            oninput="previewSignature(this.value)"
+          />
+          <div class="signature-preview-wrap">
+            <span id="signaturePreviewText" class="signature-preview-text"></span>
+            <span class="signature-preview-placeholder">Sua assinatura aparece aqui</span>
+          </div>
+          <button class="btn-sign" id="btnSign" onclick="signContract()" disabled>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            Aplicar assinatura
+          </button>
+        </div>
+
+        <div id="signedBlock" class="signed-block hidden">
+          <div class="signed-header">
+            <span class="signed-label-text">Assinatura digital</span>
+            <span class="signed-valid">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              Válida
+            </span>
+          </div>
+          <div class="signature-line">
+            <span id="signatureName" class="signature-text"></span>
+          </div>
+          <p class="signed-meta">
+            Assinado digitalmente em <span id="signedDate"></span>
+          </p>
+        </div>
+
+        <button class="btn-primary" id="btnRegister" onclick="saveRepresentative()" disabled>
+          Confirmar e continuar
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+
+      </div>
+    </section>
+
+    <!-- ══ TELA 3: TREINAMENTO ════════════════════════════════════════════ -->
+    <section id="trainingScreen" class="screen hidden">
+      <div class="card">
+
+        <div class="card-header">
+          <div class="logo-inline">
+            <img src="autozap-logo.png" alt="" class="logo-icon-sm" />
+            <span class="logo-text">Auto<strong>Zap</strong></span>
+          </div>
+          <div class="training-progress">
+            <span id="trainingStep">1 de 5</span>
+            <div class="progress-track">
+              <div id="progressFill" class="progress-fill" style="width:20%"></div>
+            </div>
+          </div>
+        </div>
+
+        <h2 id="trainingTitle"></h2>
+        <p id="trainingText" class="training-text"></p>
+
+        <button class="btn-primary" id="trainingBtn" onclick="nextTrainingCard()">
+          Continuar
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <!-- ══ TELA 4: DASHBOARD DO REPRESENTANTE ═════════════════════════════ -->
+    <section id="dashboardScreen" class="screen hidden">
+      <div class="card">
+
+        <div class="card-header">
+          <div class="logo-inline">
+            <img src="autozap-logo.png" alt="" class="logo-icon-sm" />
+            <span class="logo-text">Auto<strong>Zap</strong></span>
+          </div>
+          <span class="badge-active">● Representante Ativo</span>
+        </div>
+
+        <div class="profile-card">
+          <div id="photoPreview" class="avatar">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3a4560" stroke-width="1.5">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+          </div>
+          <div class="profile-info">
+            <h3 id="partnerName"></h3>
+            <p id="partnerCity" class="profile-city"></p>
+          </div>
+        </div>
+
+        <div class="tab-nav">
+          <button class="tab-btn active" data-tab="referral"    onclick="switchTab('referral')">Indicação</button>
+          <button class="tab-btn"        data-tab="commissions" onclick="switchTab('commissions')">Comissões</button>
+          <button class="tab-btn"        data-tab="pix"         onclick="switchTab('pix')">Dados PIX</button>
+          <button class="tab-btn"        data-tab="academia"    onclick="switchTab('academia')">Academia</button>
+        </div>
+
+        <!-- ─── ABA: INDICAÇÃO ─── -->
+        <div id="tab-referral" class="tab-content">
+
+          <div class="data-box">
+            <p class="data-label">Código de indicação</p>
+            <div class="data-row">
+              <code id="partnerCode" class="data-code"></code>
+              <button class="btn-copy" onclick="copyCode()">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                Copiar
+              </button>
+            </div>
+          </div>
+
+          <div class="data-box">
+            <p class="data-label">Link de indicação</p>
+            <div class="data-row">
+              <span id="partnerLink" class="data-link"></span>
+              <button class="btn-copy" onclick="copyPartnerLink()">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                Copiar
+              </button>
+            </div>
+          </div>
+
+          <div class="section-sep"><span>Gerar QR Code para cliente</span></div>
+
+          <p class="sub-info">Cadastre o interessado antes de mostrar o QR. A venda fica vinculada ao seu código automaticamente.</p>
+
+          <label for="leadName">Nome do interessado</label>
+          <input id="leadName" type="text" placeholder="Nome da loja ou responsável" />
+
+          <label for="leadEmail">E-mail do interessado</label>
+          <input id="leadEmail" type="email" placeholder="email@loja.com" />
+
+          <button class="btn-primary" onclick="generateLeadLink()">
+            Gerar QR Code
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h2v2h-2zM18 14h2v2h-2zM14 18h2v2h-2zM18 18h2v2h-2z"/></svg>
+          </button>
+
+          <div id="leadResult" class="qr-result hidden">
+            <p class="qr-label">Mostre este QR Code para o interessado</p>
+            <div id="qrBox"></div>
+            <span id="leadLinkText" class="qr-link"></span>
+            <button class="btn-copy full" onclick="copyLeadLink()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              Copiar link
+            </button>
+          </div>
+        </div>
+
+        <!-- ─── ABA: COMISSÕES ─── -->
+        <div id="tab-commissions" class="tab-content hidden">
+
+          <div class="stats-row">
+            <div class="stat-card">
+              <div id="commTotal" class="stat-value">R$0</div>
+              <div class="stat-label">Total ganho</div>
+            </div>
+            <div class="stat-card">
+              <div id="commPending" class="stat-value pending">R$0</div>
+              <div class="stat-label">Pendente</div>
+            </div>
+            <div class="stat-card">
+              <div id="commPaid" class="stat-value paid">R$0</div>
+              <div class="stat-label">Pago</div>
+            </div>
+          </div>
+
+          <div id="commissionList"></div>
+        </div>
+
+        <!-- ─── ABA: DADOS PIX ─── -->
+        <div id="tab-pix" class="tab-content hidden">
+
+          <p class="sub-info pix-intro">Pagamentos de comissão são enviados para a chave PIX cadastrada abaixo.</p>
+
+          <label>Tipo de chave PIX</label>
+          <div class="pix-type-grid">
+            <button class="pix-type-btn" data-pix="cpf"    onclick="selectPixType('cpf')">CPF</button>
+            <button class="pix-type-btn" data-pix="cnpj"   onclick="selectPixType('cnpj')">CNPJ</button>
+            <button class="pix-type-btn" data-pix="email"  onclick="selectPixType('email')">E-mail</button>
+            <button class="pix-type-btn" data-pix="phone"  onclick="selectPixType('phone')">Telefone</button>
+            <button class="pix-type-btn pix-full" data-pix="random" onclick="selectPixType('random')">Chave aleatória</button>
+          </div>
+
+          <label for="pixKeyInput">Chave PIX</label>
+          <input id="pixKeyInput" type="text" placeholder="Selecione o tipo acima" disabled />
+
+          <div id="pixSavedInfo" class="pix-saved hidden">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            <span id="pixSavedText"></span>
+          </div>
+
+          <button class="btn-primary" onclick="savePixData()">
+            Salvar dados PIX
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          </button>
+        </div>
+
+        <!-- ─── ABA: ACADEMIA ─── -->
+        <div id="tab-academia" class="tab-content hidden">
+          <iframe
+            id="academiaFrame"
+            src="academia_autozap_representantes.html"
+            class="academia-frame"
+            frameborder="0"
+          ></iframe>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ══ TELA: LOGIN ══════════════════════════════════════════════════ -->
+    <section id="loginScreen" class="screen hidden">
+      <div class="card">
+
+        <div class="card-header">
+          <div class="logo-inline">
+            <img src="autozap-logo.png" alt="" class="logo-icon-sm" />
+            <span class="logo-text">Auto<strong>Zap</strong></span>
+          </div>
+          <span class="step-chip">Área do representante</span>
+        </div>
+
+        <h2>Bem-vindo de volta</h2>
+        <p class="card-sub">Entre com o e-mail cadastrado para acessar sua área.</p>
+
+        <label for="loginEmail">E-mail</label>
+        <input id="loginEmail" type="email" placeholder="seuemail@email.com" autocomplete="email" />
+
+        <label for="loginPassword">Senha</label>
+        <input id="loginPassword" type="password" placeholder="Sua senha" autocomplete="current-password"
+               onkeydown="if(event.key==='Enter') doLogin()" />
+
+        <button class="btn-primary" onclick="doLogin()">
+          Entrar na minha área
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+
+        <button class="btn-back" onclick="goTo('welcomeScreen')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          Voltar
+        </button>
+
+      </div>
+    </section>
+
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
