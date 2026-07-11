@@ -1,7 +1,7 @@
 // ─── CONFIGURAÇÃO ────────────────────────────────────────────────────────────
 
 const API_BASE         = "https://aip.autozap.log.br/api/representatives";
-const BASE_AUTOZAP_URL = "https://autozap.log.br/comprar";
+const BASE_AUTOZAP_URL = "https://autozap.log.br/comprar.html";
 const BRIDGE_URL       = "https://aip.autozap.log.br/api/bridge";
 
 // ─── ESTADO ──────────────────────────────────────────────────────────────────
