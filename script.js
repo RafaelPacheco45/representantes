@@ -1,21 +1,35 @@
-// ─── CONFIGURAÇÃO ────────────────────────────────────────────────────────────
+﻿// â”€â”€â”€ CONFIGURAÃ‡ÃƒO â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const API_BASE         = "https://aip.autozap.log.br/api/representatives";
 const BASE_AUTOZAP_URL = "https://autozap.log.br/comprar.html";
 const BRIDGE_URL       = "https://aip.autozap.log.br/api/bridge";
 
-// ─── ESTADO ──────────────────────────────────────────────────────────────────
+// â”€â”€â”€ ESTADO â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 let representative   = null;
 let authToken        = null;
 let trainingIndex    = 0;
 let currentLeadLink  = "";
+let leadLinkSubmitting = false;
 let pixKeyType       = null;
 let isSigned         = false;
+let pendingSignatureName = "";
+let contractMeta = { version: "", hash: "" };
+let currentPixData = null;
 
-// ─── CAMADA DE API ───────────────────────────────────────────────────────────
-// Ponto de troca: quando o backend estiver pronto, as chamadas já estão prontas.
-// Se o endpoint retornar erro ou não responder, cai automaticamente nos MOCK abaixo.
+class ApiError extends Error {
+  constructor(message, status = 0, payload = null, endpoint = "") {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.payload = payload;
+    this.endpoint = endpoint;
+  }
+}
+
+// â”€â”€â”€ CAMADA DE API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Ponto de troca: quando o backend estiver pronto, as chamadas jÃ¡ estÃ£o prontas.
+// Se o endpoint retornar erro ou nÃ£o responder, cai automaticamente nos MOCK abaixo.
 
 const api = {
   _headers() {
@@ -24,64 +38,147 @@ const api = {
     return h;
   },
 
-  async get(path) {
+  async request(path, options = {}) {
+    const endpoint = API_BASE + path;
+    let response;
     try {
-      const res = await fetch(API_BASE + path, { headers: this._headers() });
-      if (!res.ok) return null;
-      return await res.json();
-    } catch { return null; }
+      const headers = { ...this._headers(), ...(options.headers || {}) };
+      if (options.body instanceof FormData) {
+        delete headers["Content-Type"];
+      }
+      response = await fetch(endpoint, {
+        method: options.method || "GET",
+        headers,
+        body: options.body,
+      });
+    } catch (error) {
+      throw new ApiError("Falha de rede ao acessar a API.", 0, null, path);
+    }
+
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      const statusMessages = {
+        400: "Dados invalidos enviados para a API.",
+        401: "Sessao expirada ou invalida. Entre novamente.",
+        403: "Seu usuario nao tem permissao para esta operacao.",
+        404: "Rota nao encontrada na API.",
+        409: "Ja existe um cadastro com esses dados.",
+        422: "Nao foi possivel validar os dados enviados.",
+        429: "Muitas tentativas. Aguarde e tente novamente.",
+      };
+      const message = payload?.message || payload?.error || statusMessages[response.status] || (response.status >= 500 ? "Erro interno no servidor." : `Falha na API (${response.status}).`);
+      throw new ApiError(message, response.status, payload, path);
+    }
+    return payload;
+  },
+
+  async get(path) {
+    return this.request(path, { method: "GET" });
   },
 
   async post(path, body) {
-    try {
-      const res = await fetch(API_BASE + path, {
-        method: "POST",
-        headers: this._headers(),
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) return null;
-      return await res.json();
-    } catch { return null; }
+    return this.request(path, {
+      method: "POST",
+      body: body instanceof FormData ? body : JSON.stringify(body),
+    });
   },
 };
 
-// ─── MOCKS (fallback enquanto o backend não está disponível) ─────────────────
+function escapeHTML(value = "") {
+  return String(value).replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[char]);
+}
+
+function sanitizeContractHTML(html = "") {
+  const allowedTags = new Set(["P", "BR", "STRONG", "EM", "UL", "OL", "LI", "H1", "H2", "H3", "H4"]);
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(`<div>${html}</div>`, "text/html");
+  const root = doc.body.firstElementChild;
+  if (!root) return "";
+
+  const walk = (node) => {
+    Array.from(node.querySelectorAll("*")).forEach((el) => {
+      if (!allowedTags.has(el.tagName)) {
+        el.replaceWith(...Array.from(el.childNodes));
+        return;
+      }
+      Array.from(el.attributes).forEach((attr) => el.removeAttribute(attr.name));
+    });
+  };
+
+  walk(root);
+  return root.innerHTML;
+}
+
+function maskPixKey(type, key) {
+  const value = String(key || "").trim();
+  if (!value) return "";
+  if (type === "cpf" && value.length >= 11) return value.replace(/^(\d{3})\.(\d{3})\.(\d{3})-(\d{2})$/, "***.***.***-$4");
+  if (type === "phone" && value.length >= 8) return value.replace(/^(\D*\d{2}\D*)(.*)(\d{4})$/, "$1*****-$3");
+  if (type === "email" && value.includes("@")) {
+    const [user, domain] = value.split("@");
+    return `${user.charAt(0) || "*"}***@${domain}`;
+  }
+  if (value.length <= 6) return "*".repeat(value.length);
+  return `${value.slice(0, 3)}***${value.slice(-2)}`;
+}
+
+function safeLeadUrl(ref, leadId) {
+  const url = new URL(BRIDGE_URL);
+  url.searchParams.set("ref", ref || "");
+  url.searchParams.set("lead", leadId || "");
+  url.searchParams.delete("name");
+  url.searchParams.delete("email");
+  return url.toString();
+}
+
+function setSignedState(text) {
+  const label = document.getElementById("signedStatusLabel");
+  if (label) label.textContent = text;
+}
+
+// â”€â”€â”€ MOCKS (fallback enquanto o backend nÃ£o estÃ¡ disponÃ­vel) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const MOCK = {
   contract: `
-    <h3>CONTRATO DE REPRESENTANTE COMERCIAL — AutoZap</h3>
+    <h3>CONTRATO DE REPRESENTANTE COMERCIAL â€” AutoZap</h3>
 
     <p><strong>1. OBJETO</strong><br>
-    O presente contrato credencia o REPRESENTANTE para indicação de potenciais clientes ao sistema AutoZap — plataforma de gestão comercial com inteligência artificial para lojas de celular.</p>
+    O presente contrato credencia o REPRESENTANTE para indicaÃ§Ã£o de potenciais clientes ao sistema AutoZap â€” plataforma de gestÃ£o comercial com inteligÃªncia artificial para lojas de celular.</p>
 
-    <p><strong>2. NATUREZA DA RELAÇÃO</strong><br>
-    O REPRESENTANTE não é funcionário da AutoZap. Sua atuação é exclusivamente comissionada, sem vínculo empregatício, subordinação ou exclusividade.</p>
+    <p><strong>2. NATUREZA DA RELAÃ‡ÃƒO</strong><br>
+    O REPRESENTANTE nÃ£o Ã© funcionÃ¡rio da AutoZap. Sua atuaÃ§Ã£o Ã© exclusivamente comissionada, sem vÃ­nculo empregatÃ­cio, subordinaÃ§Ã£o ou exclusividade.</p>
 
-    <p><strong>3. COMISSÕES</strong><br>
-    O REPRESENTANTE receberá 25% do valor do primeiro mês do plano contratado pelo cliente indicado:<br>
-    · Plano Básico (R$60/mês) → R$15,00<br>
-    · Plano Profissional (R$120/mês) → R$30,00<br>
-    · Plano Premium (R$220/mês) → R$55,00</p>
+    <p><strong>3. COMISSÃ•ES</strong><br>
+    O REPRESENTANTE receberÃ¡ 25% do valor do primeiro mÃªs do plano contratado pelo cliente indicado:<br>
+    Â· Plano BÃ¡sico (R$60/mÃªs) â†’ R$15,00<br>
+    Â· Plano Profissional (R$120/mÃªs) â†’ R$30,00<br>
+    Â· Plano Premium (R$220/mÃªs) â†’ R$55,00</p>
 
     <p><strong>4. PAGAMENTO</strong><br>
-    Comissões são pagas via PIX em até 7 dias úteis após confirmação do pagamento pelo cliente indicado. O REPRESENTANTE é responsável por manter seus dados de PIX atualizados na plataforma.</p>
+    ComissÃµes sÃ£o pagas via PIX em atÃ© 7 dias Ãºteis apÃ³s confirmaÃ§Ã£o do pagamento pelo cliente indicado. O REPRESENTANTE Ã© responsÃ¡vel por manter seus dados de PIX atualizados na plataforma.</p>
 
-    <p><strong>5. OBRIGAÇÕES DO REPRESENTANTE</strong><br>
-    · Indicar apenas clientes reais e genuinamente interessados.<br>
-    · Não realizar cadastros falsos ou fraudulentos.<br>
-    · Não prometer funcionalidades não previstas no AutoZap.<br>
-    · Manter dados cadastrais e de pagamento atualizados.</p>
+    <p><strong>5. OBRIGAÃ‡Ã•ES DO REPRESENTANTE</strong><br>
+    Â· Indicar apenas clientes reais e genuinamente interessados.<br>
+    Â· NÃ£o realizar cadastros falsos ou fraudulentos.<br>
+    Â· NÃ£o prometer funcionalidades nÃ£o previstas no AutoZap.<br>
+    Â· Manter dados cadastrais e de pagamento atualizados.</p>
 
-    <p><strong>6. VEDAÇÕES</strong><br>
-    · Subcontratação de terceiros sem autorização prévia por escrito.<br>
-    · Uso do nome AutoZap de forma que possa denegrir a imagem da empresa.<br>
-    · Qualquer forma de fraude ou manipulação do sistema de rastreamento.</p>
+    <p><strong>6. VEDAÃ‡Ã•ES</strong><br>
+    Â· SubcontrataÃ§Ã£o de terceiros sem autorizaÃ§Ã£o prÃ©via por escrito.<br>
+    Â· Uso do nome AutoZap de forma que possa denegrir a imagem da empresa.<br>
+    Â· Qualquer forma de fraude ou manipulaÃ§Ã£o do sistema de rastreamento.</p>
 
-    <p><strong>7. RESCISÃO</strong><br>
-    Qualquer das partes pode rescindir mediante aviso de 15 dias. Rescisão por justa causa (fraude, cadastros falsos) é imediata e implica perda das comissões pendentes.</p>
+    <p><strong>7. RESCISÃƒO</strong><br>
+    Qualquer das partes pode rescindir mediante aviso de 15 dias. RescisÃ£o por justa causa (fraude, cadastros falsos) Ã© imediata e implica perda das comissÃµes pendentes.</p>
 
     <p><strong>8. FORO</strong><br>
-    Este contrato é regido pelas leis brasileiras, com foro eleito na comarca de São Paulo/SP.</p>
+    Este contrato Ã© regido pelas leis brasileiras, com foro eleito na comarca de SÃ£o Paulo/SP.</p>
   `,
 
   commissions: {
@@ -92,37 +189,37 @@ const MOCK = {
   paymentData: null,
 };
 
-// ─── TREINAMENTO ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ TREINAMENTO â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const trainingCards = [
   {
-    icon: "⚡",
-    title: "O que é o AutoZap?",
-    text: "O AutoZap é um sistema comercial com inteligência artificial feito para lojas de celular. Em um só lugar: vendas, controle de estoque, atendimento automático no WhatsApp e emissão de notas fiscais.",
+    icon: "âš¡",
+    title: "O que Ã© o AutoZap?",
+    text: "O AutoZap Ã© um sistema comercial com inteligÃªncia artificial feito para lojas de celular. Em um sÃ³ lugar: vendas, controle de estoque, atendimento automÃ¡tico no WhatsApp e emissÃ£o de notas fiscais.",
   },
   {
-    icon: "🛒",
+    icon: "ðŸ›’",
     title: "Como apresentar para lojistas?",
-    text: "Foque nos benefícios diretos: o lojista economiza tempo, vende mais e para de perder cliente por falta de resposta. Destaque: atendimento automático 24h no WhatsApp, controle de estoque em tempo real e emissão de nota com um clique.",
+    text: "Foque nos benefÃ­cios diretos: o lojista economiza tempo, vende mais e para de perder cliente por falta de resposta. Destaque: atendimento automÃ¡tico 24h no WhatsApp, controle de estoque em tempo real e emissÃ£o de nota com um clique.",
   },
   {
-    icon: "🔗",
-    title: "Como registrar uma indicação?",
-    text: "Na sua área de representante, cadastre o nome e o e-mail do interessado. Depois gere o QR Code e mostre para ele. Quando ele contratar usando esse link, o sistema registra automaticamente que a venda veio de você.",
+    icon: "ðŸ”—",
+    title: "Como registrar uma indicaÃ§Ã£o?",
+    text: "Na sua Ã¡rea de representante, cadastre o nome e o e-mail do interessado. Depois gere o QR Code e mostre para ele. Quando ele contratar usando esse link, o sistema registra automaticamente que a venda veio de vocÃª.",
   },
   {
-    icon: "💰",
-    title: "Como funciona sua comissão?",
-    text: "Você recebe 25% do valor do primeiro mês do plano contratado. Plano de R$60 → R$15 para você. Plano de R$120 → R$30. Plano de R$220 → R$55. O pagamento é processado após a confirmação da venda.",
+    icon: "ðŸ’°",
+    title: "Como funciona sua comissÃ£o?",
+    text: "VocÃª recebe 25% do valor do primeiro mÃªs do plano contratado. Plano de R$60 â†’ R$15 para vocÃª. Plano de R$120 â†’ R$30. Plano de R$220 â†’ R$55. O pagamento Ã© processado apÃ³s a confirmaÃ§Ã£o da venda.",
   },
   {
-    icon: "🛡️",
+    icon: "ðŸ›¡ï¸",
     title: "Como evitar fraude?",
-    text: "Nunca cadastre leads falsos ou invente interessados para ganhar comissão. O sistema rastreia cada venda e identifica inconsistências automaticamente. Representantes com fraude confirmada são desligados e perdem todas as comissões pendentes.",
+    text: "Nunca cadastre leads falsos ou invente interessados para ganhar comissÃ£o. O sistema rastreia cada venda e identifica inconsistÃªncias automaticamente. Representantes com fraude confirmada sÃ£o desligados e perdem todas as comissÃµes pendentes.",
   },
 ];
 
-// ─── NAVEGAÇÃO ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ NAVEGAÃ‡ÃƒO â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function hideAll() {
   document.querySelectorAll(".screen").forEach((el) => el.classList.add("hidden"));
@@ -137,20 +234,25 @@ function goTo(screenId) {
   if (screenId === "dashboardScreen") renderDashboard();
 }
 
-// ─── FOTO ────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ FOTO â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function previewPhoto(input) {
   const file = input.files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = function (e) {
-    document.getElementById("photoPreviewUpload").innerHTML =
-      `<img src="${e.target.result}" alt="Foto de perfil" />`;
+    const preview = document.getElementById("photoPreviewUpload");
+    if (!preview) return;
+    preview.replaceChildren();
+    const img = document.createElement("img");
+    img.alt = "Foto de perfil";
+    img.src = String(e.target.result || "");
+    preview.appendChild(img);
   };
   reader.readAsDataURL(file);
 }
 
-// ─── LOGIN ───────────────────────────────────────────────────────────────────
+// â”€â”€â”€ LOGIN â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function doLogin() {
   const email    = document.getElementById("loginEmail").value.trim();
@@ -161,29 +263,33 @@ async function doLogin() {
     return;
   }
 
-  const res = await api.post("/login", { email, password });
+  try {
+    const res = await api.post("/login", { email, password });
 
-  if (res && res.token) {
-    authToken = res.token;
-    localStorage.setItem("autozap_token", res.token);
-    representative = {
-      name:         res.name,
-      city:         res.city,
-      email,
-      code:         res.code,
-      referralLink: res.referralLink || buildReferralLink(res.code),
-      photoUrl:     res.photoUrl || null,
-    };
-    goTo("dashboardScreen");
-    return;
+    if (res && res.token) {
+      authToken = res.token;
+      localStorage.setItem("autozap_token", res.token);
+      representative = {
+        name:         res.name,
+        city:         res.city,
+        email,
+        code:         res.code,
+        referralLink: res.referralLink || buildReferralLink(res.code),
+        photoUrl:     res.photoUrl || null,
+      };
+      goTo("dashboardScreen");
+      return;
+    }
+
+    showToast("E-mail ou senha incorretos.", true);
+  } catch (error) {
+    showToast(error.message || "Nao foi possivel fazer login agora.", true);
   }
-
-  showToast("E-mail ou senha incorretos.", true);
 }
 
-// ─── CADASTRO ────────────────────────────────────────────────────────────────
+// â”€â”€â”€ CADASTRO â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-function saveRepresentative() {
+async function saveRepresentative() {
   const name            = document.getElementById("name").value.trim();
   const age             = Number(document.getElementById("age").value);
   const city            = document.getElementById("city").value.trim();
@@ -206,31 +312,59 @@ function saveRepresentative() {
     return;
   }
   if (password !== passwordConfirm) {
-    showToast("As senhas não coincidem.", true);
+    showToast("As senhas nÃ£o coincidem.", true);
     return;
   }
 
-  if (!isSigned) {
+  if (!pendingSignatureName) {
     showToast("Assine o contrato para continuar.", true);
     return;
   }
 
-  const code = generateRepresentativeCode(city, name);
-  representative = {
-    name, age, city, whatsapp, email,
-    code,
-    referralLink: buildReferralLink(code),
-    photoUrl: photoFile ? URL.createObjectURL(photoFile) : null,
-  };
+  const btn = document.getElementById("btnRegister");
+  if (btn) btn.disabled = true;
 
-  localStorage.setItem("autozap_rep", JSON.stringify({ name, age, city, whatsapp, email }));
+  try {
+    const registration = await api.post("/register", { name, age, city, whatsapp, email, password });
+    const serverCode = String(registration?.code || registration?.representativeCode || registration?.id || "").trim();
+    if (!serverCode) {
+      throw new ApiError("A API concluiu o cadastro, mas nao retornou o codigo oficial do representante.", 500, registration, "/register");
+    }
 
-  // Dispara registro na API e em seguida envia foto + aceite do contrato
-  api.post("/register", { name, age, city, whatsapp, email, password }).then(async (res) => {
-    if (res?.token) { authToken = res.token; localStorage.setItem("autozap_token", authToken); }
-    if (res?.code)  { representative.code = res.code; representative.referralLink = buildReferralLink(res.code); }
+    if (registration.token) {
+      authToken = registration.token;
+      localStorage.setItem("autozap_token", registration.token);
+    }
 
-    // Upload da foto como multipart/form-data
+    await api.post("/contract/accept", {
+      representativeId: registration.id || registration.representativeId || serverCode,
+      contractVersion: contractMeta.version || registration.contractVersion || "",
+      contractHash: contractMeta.hash || registration.contractHash || "",
+      signedName: pendingSignatureName,
+      acceptedAt: new Date().toISOString(),
+      source: "representantes",
+    });
+
+    representative = {
+      name,
+      age,
+      city,
+      whatsapp,
+      email,
+      code: serverCode,
+      referralLink: buildReferralLink(serverCode),
+      photoUrl: photoFile ? URL.createObjectURL(photoFile) : null,
+    };
+
+    localStorage.setItem("autozap_rep", JSON.stringify({
+      name,
+      age,
+      city,
+      whatsapp,
+      email,
+      code: serverCode,
+    }));
+
     if (photoFile && authToken) {
       try {
         const form = new FormData();
@@ -240,42 +374,60 @@ function saveRepresentative() {
           headers: { "Authorization": `Bearer ${authToken}` },
           body: form,
         });
-      } catch {}
+      } catch (error) {
+        if (localStorage.getItem("DEBUG_API") === "1") console.warn("Falha no upload da foto", error);
+      }
     }
 
-    // Registra aceite do contrato com nome da assinatura e timestamp
-    const signedName = document.getElementById("signatureName")?.textContent || name;
-    api.post("/contract/accept", {
-      accepted:  true,
-      signedName,
-      signedAt:  new Date().toISOString(),
-    });
-  });
-
-  trainingIndex = 0;
-  goTo("trainingScreen");
+    isSigned = true;
+    setSignedState("Contrato aceito");
+    const signedDateEl = document.getElementById("signedDate");
+    if (signedDateEl) {
+      const acceptedAt = new Date();
+      signedDateEl.textContent = acceptedAt.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }) + " às " + acceptedAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    }
+    trainingIndex = 0;
+    goTo("trainingScreen");
+  } catch (error) {
+    if (error instanceof ApiError) {
+      showToast(error.message, true);
+    } else {
+      showToast(error?.message || "Nao foi possivel concluir o cadastro.", true);
+    }
+    if (btn) btn.disabled = false;
+  }
 }
 
-// ─── CONTRATO ────────────────────────────────────────────────────────────────
+// â”€â”€â”€ CONTRATO â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function loadContract() {
   const box = document.getElementById("contractText");
   if (!box) return;
 
-  // Exibe mock imediatamente — sem esperar a API
-  box.innerHTML = MOCK.contract;
+  // Exibe mock imediatamente â€” sem esperar a API
+  box.innerHTML = sanitizeContractHTML(MOCK.contract);
 
   // Reseta estado de assinatura
   isSigned = false;
+  pendingSignatureName = "";
+  contractMeta = { version: "", hash: "" };
+  setSignedState("Assinatura pendente");
   document.getElementById("signArea").classList.remove("hidden");
   document.getElementById("signedBlock").classList.add("hidden");
   const btn = document.getElementById("btnRegister");
   if (btn) btn.disabled = true;
 
   // Tenta API em background; substitui se responder
-  api.get("/contract").then((data) => {
-    if (data && data.text) box.innerHTML = data.text;
-  });
+  try {
+    const data = await api.get("/contract");
+    if (data && data.text) box.innerHTML = sanitizeContractHTML(data.text);
+    contractMeta = {
+      version: data?.version || data?.contractVersion || "",
+      hash: data?.hash || data?.contractHash || "",
+    };
+  } catch (error) {
+    if (localStorage.getItem("DEBUG_API") === "1") console.warn("Contrato indisponivel", error);
+  }
 }
 
 function previewSignature(value) {
@@ -293,31 +445,28 @@ function signContract() {
     return;
   }
 
-  isSigned = true;
+  pendingSignatureName = typedName;
 
   document.getElementById("signArea").classList.add("hidden");
 
   const block = document.getElementById("signedBlock");
   block.classList.remove("hidden");
   document.getElementById("signatureName").textContent = typedName;
-
-  const now = new Date();
-  document.getElementById("signedDate").textContent =
-    now.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }) +
-    " às " + now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  setSignedState("Assinatura preparada");
+  document.getElementById("signedDate").textContent = "Aguardando confirmação da API";
 
   const btn = document.getElementById("btnRegister");
   if (btn) btn.disabled = false;
 }
 
-// ─── TREINAMENTO ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ TREINAMENTO â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function renderTrainingCard() {
   const card  = trainingCards[trainingIndex];
   const total = trainingCards.length;
   const pct   = ((trainingIndex + 1) / total) * 100;
 
-  // ícone fixo: logo AutoZap no HTML (não sobrescrever com emoji)
+  // Ã­cone fixo: logo AutoZap no HTML (nÃ£o sobrescrever com emoji)
   document.getElementById("trainingTitle").textContent = card.title;
   document.getElementById("trainingText").textContent  = card.text;
   document.getElementById("trainingStep").textContent  = `${trainingIndex + 1} de ${total}`;
@@ -337,21 +486,29 @@ function nextTrainingCard() {
   renderTrainingCard();
 }
 
-// ─── DASHBOARD ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ DASHBOARD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function renderDashboard() {
   // Tenta buscar dados do representante via API; usa estado local como fallback
-  const meData = await api.get("/me");
-  if (meData) {
-    representative.name = meData.name || representative.name;
-    representative.city = meData.city || representative.city;
+  try {
+    const meData = await api.get("/me");
+    if (meData) {
+      representative.name = meData.name || representative.name;
+      representative.city = meData.city || representative.city;
+    }
+  } catch (error) {
+    if (localStorage.getItem("DEBUG_API") === "1") console.warn("Dados do representante indisponiveis", error);
   }
 
   // Referral
-  const refData = await api.get("/me/referral");
-  if (refData) {
-    representative.code = refData.code || representative.code;
-    representative.referralLink = refData.link || representative.referralLink;
+  try {
+    const refData = await api.get("/me/referral");
+    if (refData) {
+      representative.code = refData.code || representative.code;
+      representative.referralLink = refData.link || representative.referralLink;
+    }
+  } catch (error) {
+    if (localStorage.getItem("DEBUG_API") === "1") console.warn("Referral indisponivel", error);
   }
 
   document.getElementById("partnerName").textContent = representative.name;
@@ -365,14 +522,14 @@ async function renderDashboard() {
     avatar.innerHTML = "";
   }
 
-  // Comissões
+  // ComissÃµes
   await loadCommissions();
 
   // Dados PIX salvos
   await loadPixData();
 }
 
-// ─── TABS ────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ TABS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function switchTab(tabId) {
   document.querySelectorAll(".tab-content").forEach((t) => t.classList.add("hidden"));
@@ -381,15 +538,27 @@ function switchTab(tabId) {
   document.querySelector(`[data-tab="${tabId}"]`).classList.add("active");
 }
 
-// ─── COMISSÕES ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ COMISSÃ•ES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function loadCommissions() {
-  const data = (await api.get("/me/commissions")) || MOCK.commissions;
-  renderCommissions(data);
+  const list = document.getElementById("commissionList");
+  try {
+    const data = await api.get("/me/commissions");
+    renderCommissions(data || { summary: { total: 0, pending: 0, paid: 0 }, entries: [] });
+  } catch (error) {
+    if (list) {
+      list.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">Â°</div>
+        <p>NÃ£o foi possÃ­vel carregar as comissÃµes agora.<br>Tente novamente quando a API estiver disponÃ­vel.</p>
+      </div>`;
+    }
+    if (localStorage.getItem("DEBUG_API") === "1") console.warn("ComissÃµes indisponÃ­veis", error);
+  }
 }
 
 function renderCommissions(data) {
-  const { summary, entries } = data;
+  const { summary = { total: 0, pending: 0, paid: 0 }, entries = [] } = data || {};
 
   const fmt = (v) => `R$${Number(v).toFixed(2).replace(".", ",")}`;
   document.getElementById("commTotal").textContent   = fmt(summary.total);
@@ -401,8 +570,8 @@ function renderCommissions(data) {
   if (!entries || entries.length === 0) {
     list.innerHTML = `
       <div class="empty-state">
-        <div class="empty-state-icon">💰</div>
-        <p>Nenhuma comissão registrada ainda.<br>Comece a indicar para ver seus ganhos aqui.</p>
+        <div class="empty-state-icon">ðŸ’°</div>
+        <p>Nenhuma comissÃ£o registrada ainda.<br>Comece a indicar para ver seus ganhos aqui.</p>
       </div>`;
     return;
   }
@@ -411,12 +580,12 @@ function renderCommissions(data) {
   list.innerHTML = entries.map((e) => `
     <div class="commission-item">
       <div class="comm-info">
-        <p class="comm-client">${e.clientName}</p>
-        <p class="comm-date">${formatDate(e.date)}</p>
+        <p class="comm-client">${escapeHTML(e.clientName || "-")}</p>
+        <p class="comm-date">${escapeHTML(formatDate(e.date))}</p>
       </div>
       <div class="comm-right">
-        <span class="comm-value">${fmt(e.value)}</span>
-        <span class="comm-status status-${e.status}">${statusLabel[e.status] || e.status}</span>
+        <span class="comm-value">${escapeHTML(fmt(e.value))}</span>
+        <span class="comm-status status-${["pending", "paid", "processing"].includes(e.status) ? e.status : "pending"}">${escapeHTML(statusLabel[e.status] || "Pendente")}</span>
       </div>
     </div>`).join("");
 }
@@ -427,21 +596,27 @@ function formatDate(iso) {
   } catch { return iso; }
 }
 
-// ─── DADOS PIX ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ DADOS PIX â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function loadPixData() {
-  const data = await api.get("/payment-data");
-  if (!data) return;
+  try {
+    const data = await api.get("/payment-data");
+    if (!data) return;
 
-  const savedInfo = document.getElementById("pixSavedInfo");
-  const savedText = document.getElementById("pixSavedText");
-  savedInfo.classList.remove("hidden");
-  savedText.textContent = `Chave ${data.keyType?.toUpperCase() || "PIX"}: ${data.key}`;
-  document.getElementById("pixKeyInput").value = data.key;
-
-  if (data.keyType) {
-    selectPixType(data.keyType);
+    currentPixData = data;
+    const savedInfo = document.getElementById("pixSavedInfo");
+    const savedText = document.getElementById("pixSavedText");
+    savedInfo.classList.remove("hidden");
+    savedText.textContent = `Chave ${String(data.keyType || "PIX").toUpperCase()}: ${maskPixKey(data.keyType, data.key)}`;
     document.getElementById("pixKeyInput").value = data.key;
+
+    if (data.keyType) {
+      selectPixType(data.keyType);
+      document.getElementById("pixKeyInput").value = data.key;
+    }
+  } catch (error) {
+    currentPixData = null;
+    if (localStorage.getItem("DEBUG_API") === "1") console.warn("PIX indisponÃ­vel", error);
   }
 }
 
@@ -456,7 +631,7 @@ function selectPixType(type) {
     cnpj:   "00.000.000/0001-00",
     email:  "seu@email.com",
     phone:  "(00) 00000-0000",
-    random: "Chave aleatória UUID",
+    random: "Chave aleatÃ³ria UUID",
   };
 
   const input = document.getElementById("pixKeyInput");
@@ -477,22 +652,26 @@ async function savePixData() {
   }
 
   const payload = { keyType: pixKeyType, key };
-  const apiRes  = await api.post("/payment-data", payload);
-
-  // Persiste localmente independente da API
-  localStorage.setItem("autozap_pix", JSON.stringify(payload));
+  try {
+    await api.post("/payment-data", payload);
+    currentPixData = payload;
+  } catch (error) {
+    showToast(error.message || "Nao foi possivel salvar a chave PIX.", true);
+    return;
+  }
 
   const savedInfo = document.getElementById("pixSavedInfo");
   const savedText = document.getElementById("pixSavedText");
   savedInfo.classList.remove("hidden");
-  savedText.textContent = `Chave ${pixKeyType.toUpperCase()}: ${key}`;
+  savedText.textContent = `Chave ${pixKeyType.toUpperCase()}: ${maskPixKey(pixKeyType, key)}`;
 
   showToast("Dados PIX salvos com sucesso!");
 }
 
-// ─── LEAD / QR CODE ──────────────────────────────────────────────────────────
+// â”€â”€â”€ LEAD / QR CODE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-function generateLeadLink() {
+async function generateLeadLink() {
+  if (leadLinkSubmitting) return;
   const leadName  = document.getElementById("leadName").value.trim();
   const leadEmail = document.getElementById("leadEmail").value.trim();
 
@@ -502,43 +681,36 @@ function generateLeadLink() {
   }
 
   const leadId = crypto.randomUUID();
-  const url    = new URL(BRIDGE_URL);
-  url.searchParams.set("ref",   representative.code);
-  url.searchParams.set("lead",  leadId);
-  url.searchParams.set("name",  leadName);
-  url.searchParams.set("email", leadEmail);
+  leadLinkSubmitting = true;
+  try {
+    await api.post("/leads", {
+      representativeCode: representative.code,
+      leadId,
+      name: leadName,
+      email: leadEmail,
+    });
 
-  currentLeadLink = url.toString();
+    currentLeadLink = safeLeadUrl(representative.code, leadId);
 
-  document.getElementById("leadResult").classList.remove("hidden");
-  document.getElementById("leadLinkText").textContent = currentLeadLink;
+    document.getElementById("leadResult").classList.remove("hidden");
+    document.getElementById("leadLinkText").textContent = currentLeadLink;
 
-  const qrBox = document.getElementById("qrBox");
-  qrBox.innerHTML = "";
-  QRCode.toCanvas(currentLeadLink, { width: 200, margin: 2 }, function (err, canvas) {
-    if (err) { showToast("Erro ao gerar QR Code.", true); return; }
-    qrBox.appendChild(canvas);
-  });
+    const qrBox = document.getElementById("qrBox");
+    qrBox.replaceChildren();
+    QRCode.toCanvas(currentLeadLink, { width: 200, margin: 2 }, function (err, canvas) {
+      if (err) { showToast("Erro ao gerar QR Code.", true); return; }
+      qrBox.appendChild(canvas);
+    });
 
-  // Ponto de troca: registrar lead na API quando disponível
-  // await api.post("/leads", { representativeCode: representative.code, leadId, leadName, leadEmail });
-  console.log("Lead gerado:", { representativeCode: representative.code, leadId, leadName, leadEmail });
-
-  document.getElementById("leadResult").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    document.getElementById("leadResult").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  } catch (error) {
+    showToast(error.message || "Nao foi possivel registrar o lead.", true);
+  } finally {
+    leadLinkSubmitting = false;
+  }
 }
 
-// ─── HELPERS DE CÓDIGO E LINK ────────────────────────────────────────────────
-
-function generateRepresentativeCode(city, name) {
-  const clean = (str) =>
-    str.normalize("NFD")
-       .replace(/[̀-ͯ]/g, "")
-       .replace(/[^a-zA-Z]/g, "")
-       .slice(0, 3)
-       .toUpperCase();
-  const random = Math.floor(1000 + Math.random() * 9000);
-  return `AZ-${clean(city)}-${clean(name)}-${random}`;
-}
+// â”€â”€â”€ HELPERS DE CÃ“DIGO E LINK â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function buildReferralLink(code) {
   const url = new URL(BASE_AUTOZAP_URL);
@@ -546,9 +718,9 @@ function buildReferralLink(code) {
   return url.toString();
 }
 
-// ─── CLIPBOARD ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ CLIPBOARD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-function copyCode()        { copyToClipboard(representative.code,          "Código copiado!"); }
+function copyCode()        { copyToClipboard(representative.code,          "CÃ³digo copiado!"); }
 function copyPartnerLink() { copyToClipboard(representative.referralLink,  "Link copiado!"); }
 function copyLeadLink()    { copyToClipboard(currentLeadLink,              "Link copiado!"); }
 
@@ -567,7 +739,7 @@ function copyToClipboard(text, successMsg) {
   }
 }
 
-// ─── TOAST ───────────────────────────────────────────────────────────────────
+// â”€â”€â”€ TOAST â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function showToast(msg, isError = false) {
   const existing = document.querySelector(".toast");
@@ -586,7 +758,7 @@ function showToast(msg, isError = false) {
   setTimeout(() => toast.remove(), 2400);
 }
 
-// ─── INIT ─────────────────────────────────────────────────────────────────────
-// Sem trava de horário — funcionamento 24h.
+// â”€â”€â”€ INIT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Sem trava de horÃ¡rio â€” funcionamento 24h.
 
 goTo("welcomeScreen");
