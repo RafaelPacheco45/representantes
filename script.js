@@ -316,7 +316,7 @@ async function saveRepresentative() {
     return;
   }
 
-  if (!pendingSignatureName) {
+  if (!pendingSignatureName || !contractMeta.version || !contractMeta.hash) {
     showToast("Assine o contrato para continuar.", true);
     return;
   }
@@ -338,8 +338,9 @@ async function saveRepresentative() {
 
     await api.post("/contract/accept", {
       representativeId: registration.id || registration.representativeId || serverCode,
-      contractVersion: contractMeta.version || registration.contractVersion || "",
-      contractHash: contractMeta.hash || registration.contractHash || "",
+      accepted: true,
+      contract_version: contractMeta.version,
+      contract_hash: contractMeta.hash,
       signedName: pendingSignatureName,
       acceptedAt: new Date().toISOString(),
       source: "representantes",
@@ -403,30 +404,29 @@ async function saveRepresentative() {
 async function loadContract() {
   const box = document.getElementById("contractText");
   if (!box) return;
-
-  // Exibe mock imediatamente â€” sem esperar a API
-  box.innerHTML = sanitizeContractHTML(MOCK.contract);
-
-  // Reseta estado de assinatura
+  box.textContent = "Carregando contrato oficial...";
   isSigned = false;
   pendingSignatureName = "";
   contractMeta = { version: "", hash: "" };
-  setSignedState("Assinatura pendente");
-  document.getElementById("signArea").classList.remove("hidden");
+  setSignedState("Aguardando contrato oficial");
+  document.getElementById("signArea").classList.add("hidden");
   document.getElementById("signedBlock").classList.add("hidden");
+  document.getElementById("btnSign").disabled = true;
   const btn = document.getElementById("btnRegister");
   if (btn) btn.disabled = true;
-
-  // Tenta API em background; substitui se responder
   try {
-    const data = await api.get("/contract");
-    if (data && data.text) box.innerHTML = sanitizeContractHTML(data.text);
-    contractMeta = {
-      version: data?.version || data?.contractVersion || "",
-      hash: data?.hash || data?.contractHash || "",
-    };
+    const response = await api.get("/contract");
+    const data = response?.contract || response;
+    const html = data?.html || data?.text;
+    if (!html || !data.version || !data.hash) throw new Error("Contrato oficial incompleto");
+    box.innerHTML = sanitizeContractHTML(html);
+    contractMeta = { version: data.version, hash: data.hash };
+    document.getElementById("signArea").classList.remove("hidden");
+    setSignedState("Assinatura pendente");
+    previewSignature(document.getElementById("signatureInput").value);
   } catch (error) {
-    if (localStorage.getItem("DEBUG_API") === "1") console.warn("Contrato indisponivel", error);
+    box.textContent = "Nao foi possivel carregar o contrato oficial. Reabra o cadastro para tentar novamente.";
+    setSignedState("Contrato indisponivel");
   }
 }
 
@@ -435,10 +435,11 @@ function previewSignature(value) {
   const placeholder = document.querySelector(".signature-preview-placeholder");
   preview.textContent = value;
   if (placeholder) placeholder.style.display = value ? "none" : "";
-  document.getElementById("btnSign").disabled = !value.trim();
+  document.getElementById("btnSign").disabled = !value.trim() || !contractMeta.version || !contractMeta.hash;
 }
 
 function signContract() {
+  if (!contractMeta.version || !contractMeta.hash) return showToast("Aguarde o contrato oficial antes de assinar.", true);
   const typedName = document.getElementById("signatureInput").value.trim();
   if (!typedName) {
     showToast("Digite seu nome completo para assinar.", true);
