@@ -494,8 +494,8 @@ async function renderDashboard() {
   try {
     const meData = await api.get("/me");
     if (meData) {
-      representative.name = meData.name || representative.name;
-      representative.city = meData.city || representative.city;
+      representative.name = meData.representative?.name || meData.name || representative.name;
+      representative.city = meData.representative?.city || meData.city || representative.city;
     }
   } catch (error) {
     if (localStorage.getItem("DEBUG_API") === "1") console.warn("Dados do representante indisponiveis", error);
@@ -505,8 +505,8 @@ async function renderDashboard() {
   try {
     const refData = await api.get("/me/referral");
     if (refData) {
-      representative.code = refData.code || representative.code;
-      representative.referralLink = refData.link || representative.referralLink;
+      representative.code = refData.referral_code || refData.code || representative.code;
+      representative.referralLink = refData.referral_url || refData.link || representative.referralLink;
     }
   } catch (error) {
     if (localStorage.getItem("DEBUG_API") === "1") console.warn("Referral indisponivel", error);
@@ -558,7 +558,19 @@ async function loadCommissions() {
   }
 }
 
+function normalizeCommissions(data = {}) {
+  if (Array.isArray(data.entries)) return data;
+  const groups = data.commissions || {};
+  const entries = Object.entries(groups).flatMap(([status, rows]) => (Array.isArray(rows) ? rows : []).map(row => ({
+    clientName: row.client_name || row.customer_name || row.customer_id || "Cliente indicado",
+    date: row.created_at, value: Number(row.commission_amount || 0), status: row.status || status
+  })));
+  const sum = statuses => entries.filter(row => statuses.includes(row.status)).reduce((total, row) => total + row.value, 0);
+  return { entries, summary: { total: sum(["pending", "approved", "paid"]), pending: sum(["pending", "approved"]), paid: sum(["paid"]) } };
+}
+
 function renderCommissions(data) {
+  data = normalizeCommissions(data);
   const { summary = { total: 0, pending: 0, paid: 0 }, entries = [] } = data || {};
 
   const fmt = (v) => `R$${Number(v).toFixed(2).replace(".", ",")}`;
@@ -577,7 +589,7 @@ function renderCommissions(data) {
     return;
   }
 
-  const statusLabel = { pending: "Pendente", paid: "Pago", processing: "Processando" };
+  const statusLabel = { pending: "Pendente", approved: "Aprovada", paid: "Pago", processing: "Processando", blocked: "Bloqueada", cancelled: "Cancelada", chargeback: "Estornada" };
   list.innerHTML = entries.map((e) => `
     <div class="commission-item">
       <div class="comm-info">
@@ -601,23 +613,16 @@ function formatDate(iso) {
 
 async function loadPixData() {
   try {
-    const data = await api.get("/payment-data");
+    const response = await api.get("/payment-data");
+    const data = response?.payment_data;
     if (!data) return;
-
     currentPixData = data;
-    const savedInfo = document.getElementById("pixSavedInfo");
-    const savedText = document.getElementById("pixSavedText");
-    savedInfo.classList.remove("hidden");
-    savedText.textContent = `Chave ${String(data.keyType || "PIX").toUpperCase()}: ${maskPixKey(data.keyType, data.key)}`;
-    document.getElementById("pixKeyInput").value = data.key;
-
-    if (data.keyType) {
-      selectPixType(data.keyType);
-      document.getElementById("pixKeyInput").value = data.key;
-    }
+    document.getElementById("pixSavedInfo").classList.remove("hidden");
+    document.getElementById("pixSavedText").textContent = `Chave ${String(data.pix_type || "PIX").toUpperCase()}: ${data.pix_key_masked || "Cadastrada"}`;
+    document.getElementById("pixKeyInput").value = "";
+    if (data.pix_type) selectPixType(data.pix_type);
   } catch (error) {
-    currentPixData = null;
-    if (localStorage.getItem("DEBUG_API") === "1") console.warn("PIX indisponÃ­vel", error);
+    if (localStorage.getItem("DEBUG_API") === "1") console.warn("Dados PIX indisponiveis", error);
   }
 }
 
@@ -652,7 +657,10 @@ async function savePixData() {
     return;
   }
 
-  const payload = { keyType: pixKeyType, key };
+  const holderName = document.getElementById("pixHolderName").value.trim();
+  const holderDocument = document.getElementById("pixHolderDocument").value.replace(/\D/g, "");
+  if (!holderName || ![11, 14].includes(holderDocument.length)) return showToast("Informe o nome e CPF/CNPJ do titular.", true);
+  const payload = { pix_type: pixKeyType, pix_key: key, account_holder_name: holderName, account_holder_document: holderDocument };
   try {
     await api.post("/payment-data", payload);
     currentPixData = payload;
@@ -684,14 +692,15 @@ async function generateLeadLink() {
   const leadId = crypto.randomUUID();
   leadLinkSubmitting = true;
   try {
-    await api.post("/leads", {
-      representativeCode: representative.code,
-      leadId,
-      name: leadName,
+    const result = await api.post("/referrals", {
+      referral_code: representative.code,
+      lead_id: leadId,
+      source: "representantes",
+      metadata: { client_name: leadName, email: leadEmail },
       email: leadEmail,
     });
 
-    currentLeadLink = safeLeadUrl(representative.code, leadId);
+    currentLeadLink = safeLeadUrl(result?.referral?.referral_code || representative.code, result?.referral?.lead_id || leadId);
 
     document.getElementById("leadResult").classList.remove("hidden");
     document.getElementById("leadLinkText").textContent = currentLeadLink;

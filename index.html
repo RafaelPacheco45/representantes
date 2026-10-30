@@ -347,6 +347,11 @@
           <label for="pixKeyInput">Chave PIX</label>
           <input id="pixKeyInput" type="text" placeholder="Selecione o tipo acima" disabled />
 
+          <label for="pixHolderName">Nome do titular da conta</label>
+          <input id="pixHolderName" type="text" autocomplete="name" placeholder="Nome completo ou razao social" />
+          <label for="pixHolderDocument">CPF ou CNPJ do titular</label>
+          <input id="pixHolderDocument" type="text" inputmode="numeric" autocomplete="off" placeholder="Somente numeros" />
+
           <div id="pixSavedInfo" class="pix-saved hidden">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
             <span id="pixSavedText"></span>
@@ -409,6 +414,6 @@
   </main>
 
   <script src="vendor/qrcode.min.js"></script>
-  <script src="script.js?v=contract-official-20261030"></script>
+  <script src="script.js?v=representatives-flow-20261030"></script>
 </body>
 </html>
