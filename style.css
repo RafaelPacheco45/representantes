@@ -1292,3 +1292,14 @@ input:focus {
   /* Academia: ajusta sangria para padding menor do card */
   #tab-academia { margin-left: -20px; margin-right: -20px; margin-bottom: -28px; }
 }
+
+/* Keep legal document typography independent from hero/card headings. */
+.contract-box { font-family: Arial, Helvetica, sans-serif; overflow-wrap: anywhere; }
+.contract-box h1, .contract-box h2, .contract-box h3, .contract-box h4 {
+  font-family: Arial, Helvetica, sans-serif; font-size: 15px; line-height: 1.5;
+  letter-spacing: normal; margin: 18px 0 8px; color: var(--t1);
+}
+.contract-box :first-child { margin-top: 0; }
+.contract-box ul, .contract-box ol { padding-left: 22px; margin-bottom: 12px; }
+.contract-box table { width: 100%; border-collapse: collapse; }
+.contract-box td, .contract-box th { padding: 6px; border: 1px solid var(--line); }
